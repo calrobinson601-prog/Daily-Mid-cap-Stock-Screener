@@ -2,3 +2,6 @@ streamlit
 pandas
 yfinance>=0.2.33
 numpy
+ta
+requests
+beautifulsoup4
