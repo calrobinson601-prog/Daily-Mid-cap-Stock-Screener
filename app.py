@@ -1,91 +1,86 @@
+# tactical_screener.py
+
 import streamlit as st
+import yfinance as yf
 import pandas as pd
-from datetime import datetime
+import numpy as np
 
-# Sample data — replace with your actual metrics or connect to your backend
-data = {
-    'Ticker': ['TOL', 'WEN', 'ABC', 'XYZ', 'DEF'],
-    'Breakout Score': [7.2, 3.5, 5.1, 2.0, 8.0],
-    'Volume Surge': [1.8, 0.9, 1.2, 0.5, 2.1],
-    'Best Day to Buy': ['Tuesday', 'Friday', 'Monday', 'Thursday', 'Wednesday'],
-    'Momentum': [0.26, -0.31, 0.05, -0.45, 0.33],
-    'Gain Potential Score': [3, 1, 2, 0, 3],
-    'Sector Strength': ['Strong', 'Weak', 'Neutral', 'Weak', 'Strong']
-}
+st.set_page_config(page_title="Mid-Cap Tactical Screener", layout="wide")
+st.title("📊 Mid-Cap Tactical Screener")
+st.caption("Live breakout scoring based on price action, RSI, volume, and 52-week range")
 
-df = pd.DataFrame(data)
+# Define mid-cap tickers to scan
+tickers = ['BLDR', 'FND', 'TOL', 'WEN', 'ZUMZ']
 
-# Step 1: Classify signal strength
-def classify_signal(row):
-    if row['Gain Potential Score'] == 3 or row['Momentum'] > 0.2:
-        return '✅ Positive Setup'
-    elif row['Momentum'] < -0.2 or row['Gain Potential Score'] == 0:
-        return '❌ Negative'
-    else:
-        return '⚠️ Neutral'
+@st.cache_data(ttl=3600)
+def fetch_metrics(ticker):
+    stock = yf.Ticker(ticker)
+    hist = stock.history(period="1mo")
+    info = stock.info
 
-df['Signal'] = df.apply(classify_signal, axis=1)
+    price = info.get('currentPrice', None)
+    high_52w = info.get('fiftyTwoWeekHigh', None)
+    low_52w = info.get('fiftyTwoWeekLow', None)
+    volume = info.get('volume', None)
+    avg_volume = info.get('averageVolume', None)
 
-# Step 2: Add emoji icon column
-df['Signal Icon'] = df['Signal'].map({
-    '✅ Positive Setup': '🟢',
-    '⚠️ Neutral': '🟡',
-    '❌ Negative': '🔴'
-})
+    # RSI calculation
+    rsi = None
+    if not hist.empty:
+        delta = hist['Close'].diff()
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
+        avg_gain = gain.rolling(window=14).mean()
+        avg_loss = loss.rolling(window=14).mean()
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs.iloc[-1])) if rs.iloc[-1] else None
 
-# Step 3: Generate AI tactical notes
-def generate_note(row):
-    if row['Signal'] == '✅ Positive Setup':
-        return f"Strong setup — consider entry on {row['Best Day to Buy']} with breakout score {row['Breakout Score']:.1f}."
-    elif row['Signal'] == '⚠️ Neutral':
-        return f"Mixed signals — momentum is modest. Watch for volume confirmation."
-    else:
-        return f"Under pressure — avoid entry until momentum improves."
+    return {
+        'Ticker': ticker,
+        'Price': price,
+        '52W High': high_52w,
+        '52W Low': low_52w,
+        'Volume': volume,
+        'Avg Volume': avg_volume,
+        'RSI': round(rsi, 2) if rsi else None
+    }
 
-df['AI Note'] = df.apply(generate_note, axis=1)
+# Fetch live data
+live_data = [fetch_metrics(t) for t in tickers]
+df = pd.DataFrame(live_data)
 
-# Step 4: Add Buy-Day Alert
-today = datetime.today().strftime('%A')  # e.g., 'Friday'
-df['Buy-Day Alert'] = df['Best Day to Buy'].apply(
-    lambda x: '🔔 Today is the optimal entry day!' if x == today else ''
-)
+# Tactical scoring logic
+def score_row(row):
+    score = 0
+    if row['Price'] and row['52W High']:
+        breakout_ratio = row['Price'] / row['52W High']
+        if breakout_ratio > 0.95:
+            score += 2
+        elif breakout_ratio > 0.90:
+            score += 1
 
-# Step 5: Define color styling for Signal column
-def color_signal(val):
-    if val == '✅ Positive Setup':
-        return 'background-color: lightgreen; color: black'
-    elif val == '⚠️ Neutral':
-        return 'background-color: #fff3cd; color: black'
-    elif val == '❌ Negative':
-        return 'background-color: lightcoral; color: white'
-    else:
-        return ''
+    if row['RSI']:
+        if 50 < row['RSI'] < 70:
+            score += 2
+        elif 40 < row['RSI'] <= 50:
+            score += 1
 
-# Step 6: Sidebar filter for dynamic selection
-st.sidebar.title("🔍 Filter Tactical Setups")
-signal_filter = st.sidebar.selectbox(
-    "Choose signal type:",
-    options=["All", "✅ Positive Setup", "⚠️ Neutral", "❌ Negative"]
-)
+    if row['Volume'] and row['Avg Volume']:
+        vol_ratio = row['Volume'] / row['Avg Volume']
+        if vol_ratio > 1.2:
+            score += 2
+        elif vol_ratio > 1.0:
+            score += 1
 
-# Step 7: Filter DataFrame based on selection
-if signal_filter == "All":
-    filtered_df = df
-else:
-    filtered_df = df[df['Signal'] == signal_filter]
+    return score
 
-# Step 8: Display styled DataFrame
-st.title("📊 Tactical Stock Screener")
-st.subheader(f"Showing: {signal_filter} Signals")
+df['Score'] = df.apply(score_row, axis=1)
+df = df.sort_values(by='Score', ascending=False)
 
-styled_df = filtered_df.style.applymap(color_signal, subset=['Signal'])
-st.dataframe(styled_df)
+# Display results
+st.subheader("🏆 Top Tactical Setups")
+st.dataframe(df.style.highlight_max(axis=0, subset=['Score']), use_container_width=True)
 
-# Step 9: Highlight Buy-Day Alerts
-if any(filtered_df['Buy-Day Alert']):
-    st.subheader("🔔 Today's Entry Alerts")
-    for _, row in filtered_df.iterrows():
-        if row['Buy-Day Alert']:
-            st.markdown(f"**{row['Ticker']}** → {row['Buy-Day Alert']}")
-
-
+# Optional: Show raw metrics
+with st.expander("📋 Raw Metrics"):
+    st.write(df)
