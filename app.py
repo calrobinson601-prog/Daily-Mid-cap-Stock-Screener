@@ -1,132 +1,91 @@
 import streamlit as st
 import pandas as pd
-import yfinance as yf
-import numpy as np
+from datetime import datetime
 
-st.title("📈 Tactical Mid-Cap Screener: Top 5 Breakout Picks with Timing Intelligence")
+# Sample data — replace with your actual metrics or connect to your backend
+data = {
+    'Ticker': ['TOL', 'WEN', 'ABC', 'XYZ', 'DEF'],
+    'Breakout Score': [7.2, 3.5, 5.1, 2.0, 8.0],
+    'Volume Surge': [1.8, 0.9, 1.2, 0.5, 2.1],
+    'Best Day to Buy': ['Tuesday', 'Friday', 'Monday', 'Thursday', 'Wednesday'],
+    'Momentum': [0.26, -0.31, 0.05, -0.45, 0.33],
+    'Gain Potential Score': [3, 1, 2, 0, 3],
+    'Sector Strength': ['Strong', 'Weak', 'Neutral', 'Weak', 'Strong']
+}
 
-# --- Define mid-cap tickers (customizable)
-tickers = ["AEO", "BLDR", "FND", "HUBG", "SMCI", "TPX", "TOL", "WEN", "WOLF", "ZUMZ"]
+df = pd.DataFrame(data)
 
-# --- Breakout metric function
-def calculate_metrics(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period="6mo")
-        info = stock.info
+# Step 1: Classify signal strength
+def classify_signal(row):
+    if row['Gain Potential Score'] == 3 or row['Momentum'] > 0.2:
+        return '✅ Positive Setup'
+    elif row['Momentum'] < -0.2 or row['Gain Potential Score'] == 0:
+        return '❌ Negative'
+    else:
+        return '⚠️ Neutral'
 
-        if hist.empty or "Close" not in hist or "Volume" not in hist:
-            return None
+df['Signal'] = df.apply(classify_signal, axis=1)
 
-        close = hist["Close"]
-        volume = hist["Volume"]
+# Step 2: Add emoji icon column
+df['Signal Icon'] = df['Signal'].map({
+    '✅ Positive Setup': '🟢',
+    '⚠️ Neutral': '🟡',
+    '❌ Negative': '🔴'
+})
 
-        # 1. Momentum (6-month return)
-        momentum = (close[-1] - close[0]) / close[0]
-        score1 = 1 if momentum > 0.15 else 0
+# Step 3: Generate AI tactical notes
+def generate_note(row):
+    if row['Signal'] == '✅ Positive Setup':
+        return f"Strong setup — consider entry on {row['Best Day to Buy']} with breakout score {row['Breakout Score']:.1f}."
+    elif row['Signal'] == '⚠️ Neutral':
+        return f"Mixed signals — momentum is modest. Watch for volume confirmation."
+    else:
+        return f"Under pressure — avoid entry until momentum improves."
 
-        # 2. Volume Surge (last day vs. 20-day avg)
-        vol_ratio = volume[-1] / volume[-20:].mean()
-        score2 = 1 if vol_ratio > 1.5 else 0
+df['AI Note'] = df.apply(generate_note, axis=1)
 
-        # 3. RSI (Relative Strength Index)
-        delta = close.diff()
-        gain = delta.where(delta > 0, 0)
-        loss = -delta.where(delta < 0, 0)
-        avg_gain = gain.rolling(window=14).mean()
-        avg_loss = loss.rolling(window=14).mean()
-        rs = avg_gain / avg_loss
-        rsi = 100 - (100 / (1 + rs))
-        score3 = 1 if 30 < rsi.iloc[-1] < 70 else 0
+# Step 4: Add Buy-Day Alert
+today = datetime.today().strftime('%A')  # e.g., 'Friday'
+df['Buy-Day Alert'] = df['Best Day to Buy'].apply(
+    lambda x: '🔔 Today is the optimal entry day!' if x == today else ''
+)
 
-        # 4. MACD Crossover
-        ema12 = close.ewm(span=12, adjust=False).mean()
-        ema26 = close.ewm(span=26, adjust=False).mean()
-        macd = ema12 - ema26
-        signal = macd.ewm(span=9, adjust=False).mean()
-        score4 = 1 if macd.iloc[-1] > signal.iloc[-1] else 0
+# Step 5: Define color styling for Signal column
+def color_signal(val):
+    if val == '✅ Positive Setup':
+        return 'background-color: lightgreen; color: black'
+    elif val == '⚠️ Neutral':
+        return 'background-color: #fff3cd; color: black'
+    elif val == '❌ Negative':
+        return 'background-color: lightcoral; color: white'
+    else:
+        return ''
 
-        # 5. Earnings Growth
-        earnings_growth = info.get("earningsQuarterlyGrowth", 0)
-        score5 = 1 if earnings_growth and earnings_growth > 0.1 else 0
+# Step 6: Sidebar filter for dynamic selection
+st.sidebar.title("🔍 Filter Tactical Setups")
+signal_filter = st.sidebar.selectbox(
+    "Choose signal type:",
+    options=["All", "✅ Positive Setup", "⚠️ Neutral", "❌ Negative"]
+)
 
-        # 6. Institutional Ownership
-        inst_own = info.get("heldPercentInstitutions", 0)
-        score6 = 1 if inst_own and inst_own > 0.5 else 0
-
-        # 7. Short Interest Ratio
-        short_ratio = info.get("shortRatio", 0)
-        score7 = 1 if short_ratio and short_ratio < 5 else 0
-
-        # Composite breakout score
-        total_score = score1 + score2 + score3 + score4 + score5 + score6 + score7
-
-        # Predictive gain potential: based on momentum + volume + MACD
-        gain_potential = 0
-        if momentum > 0.05: gain_potential += 1
-        if vol_ratio > 1.5: gain_potential += 1
-        if macd.iloc[-1] > signal.iloc[-1]: gain_potential += 1
-
-        # --- Best Day to Buy Analysis
-        hist["Return"] = hist["Close"].pct_change()
-        hist["Weekday"] = hist.index.day_name()
-        weekday_perf = hist.groupby("Weekday")["Return"].mean().sort_values(ascending=False)
-
-        best_day = weekday_perf.idxmax()
-        best_day_return = weekday_perf.max()
-
-        # --- Next Upcoming Best Day
-        weekday_map = {
-            "Monday": 0,
-            "Tuesday": 1,
-            "Wednesday": 2,
-            "Thursday": 3,
-            "Friday": 4
-        }
-
-        today = pd.Timestamp.today().tz_localize("America/Chicago")
-        today_weekday = today.weekday()
-        best_day_num = weekday_map.get(best_day, None)
-
-        if best_day_num is not None:
-            days_ahead = (best_day_num - today_weekday + 7) % 7
-            next_best_day = today + pd.Timedelta(days=days_ahead)
-            next_best_day_str = next_best_day.strftime("%A, %b %d")
-        else:
-            next_best_day_str = "N/A"
-
-        return {
-            "Ticker": ticker,
-            "Breakout Score": total_score,
-            "Gain Potential Score": gain_potential,
-            "Momentum": round(momentum, 2),
-            "Volume Surge": round(vol_ratio, 2),
-            "RSI": round(rsi.iloc[-1], 2),
-            "MACD > Signal": bool(score4),
-            "Earnings Growth": round(earnings_growth, 2) if earnings_growth else "N/A",
-            "Institutional Ownership": round(inst_own, 2) if inst_own else "N/A",
-            "Short Ratio": round(short_ratio, 2) if short_ratio else "N/A",
-            "Best Day to Buy": best_day,
-            "Avg Return on Best Day (%)": round(best_day_return * 100, 2),
-            "Next Best Buy Date": next_best_day_str
-        }
-
-    except Exception as e:
-        st.warning(f"{ticker} skipped due to error: {e}")
-        return None
-
-# --- Run screener
-results = []
-for ticker in tickers:
-    metrics = calculate_metrics(ticker)
-    if metrics and "Gain Potential Score" in metrics:
-        results.append(metrics)
-
-# --- Display top 5
-if results:
-    df = pd.DataFrame(results)
-    top5 = df.sort_values(by="Gain Potential Score", ascending=False).head(5)
-    st.subheader("🔝 Top 5 Mid-Cap Stocks Likely to Gain 5% Today")
-    st.dataframe(top5)
+# Step 7: Filter DataFrame based on selection
+if signal_filter == "All":
+    filtered_df = df
 else:
-    st.error("No valid data returned. Please check tickers or try again later.")
+    filtered_df = df[df['Signal'] == signal_filter]
+
+# Step 8: Display styled DataFrame
+st.title("📊 Tactical Stock Screener")
+st.subheader(f"Showing: {signal_filter} Signals")
+
+styled_df = filtered_df.style.applymap(color_signal, subset=['Signal'])
+st.dataframe(styled_df)
+
+# Step 9: Highlight Buy-Day Alerts
+if any(filtered_df['Buy-Day Alert']):
+    st.subheader("🔔 Today's Entry Alerts")
+    for _, row in filtered_df.iterrows():
+        if row['Buy-Day Alert']:
+            st.markdown(f"**{row['Ticker']}** → {row['Buy-Day Alert']}")
+
+
