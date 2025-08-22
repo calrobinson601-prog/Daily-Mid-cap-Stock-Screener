@@ -1,61 +1,16 @@
-# app.py
-
-import streamlit as st
-import yfinance as yf
-import pandas as pd
-import numpy as np
-import requests
-from bs4 import BeautifulSoup
-from ta.trend import MACD, ADXIndicator
-from ta.momentum import RSIIndicator
-from ta.volatility import BollingerBands
-
-st.set_page_config(page_title="13-Metric Tactical Screener", layout="wide")
-
-# 📥 Input tickers
-st.title("📊 Tactical Stock Screener (13 Metrics)")
-tickers = st.text_input("Enter comma-separated tickers", "AAPL, MSFT, NVDA").split(",")
-
-# 📅 Parameters
-start_date = st.date_input("Start Date", pd.to_datetime("2024-01-01"))
-end_date = st.date_input("End Date", pd.to_datetime("today"))
-
-# 🔍 Finviz scraping for sentiment/fundamental metrics
-def scrape_finviz(ticker):
-    url = f"https://finviz.com/quote.ashx?t={ticker}"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        soup = BeautifulSoup(requests.get(url, headers=headers).text, "html.parser")
-        data = {td.text: td.find_next_sibling("td").text for td in soup.find_all("td", class_="snapshot-td2-cp")}
-        return {
-            "Insider Buying": "Buy" in data.get("Insider Trans", ""),
-            "Short Interest Decline": "-" in data.get("Short Float", ""),
-            "Institutional Ownership": float(data.get("Inst Own", "0%").strip('%')) > 50,
-            "Earnings Surprise": "+" in data.get("EPS (ttm)", ""),
-            "Sector Outperformance": float(data.get("Perf YTD", "0%").strip('%')) > 0
-        }
-    except:
-        return {
-            "Insider Buying": False,
-            "Short Interest Decline": False,
-            "Institutional Ownership": False,
-            "Earnings Surprise": False,
-            "Sector Outperformance": False
-        }
-
-# 📈 Technical analysis
 def analyze_stock(ticker):
     df = yf.download(ticker.strip(), start=start_date, end=end_date)
     if df.empty or len(df) < 200:
         return None
 
-    # Clean and validate data
-    df = df[pd.to_numeric(df["Close"], errors="coerce").notnull()]
+    # ✅ Clean and validate data
+    df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
+    df.dropna(subset=["Close"], inplace=True)
     df.dropna(inplace=True)
     if len(df) < 50:
         return None
 
-    # Initialize indicators safely
+    # ✅ Initialize indicators safely
     try:
         df["RSI"] = RSIIndicator(close=df["Close"]).rsi()
     except Exception as e:
@@ -155,17 +110,3 @@ def analyze_stock(ticker):
         "ADX": round(latest["ADX"], 2) if pd.notnull(latest["ADX"]) else None,
         "Volume": int(latest["Volume"])
     }
-
-# 🧮 Run analysis
-results = []
-for ticker in tickers:
-    result = analyze_stock(ticker)
-    if result:
-        results.append(result)
-
-# 📊 Display results
-if results:
-    df_results = pd.DataFrame(results).sort_values(by="Score", ascending=False)
-    st.dataframe(df_results[["Ticker", "Score", "Close", "RSI", "ADX", "Volume", "Signals"]])
-else:
-    st.warning("No valid data returned. Please check tickers or date range.")
