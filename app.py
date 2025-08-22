@@ -1,6 +1,12 @@
 def analyze_stock(ticker):
-    df = yf.download(ticker.strip(), start=start_date, end=end_date)
+    ticker = ticker.strip().upper()
+    if not ticker:
+        st.warning("Empty ticker skipped.")
+        return None
+
+    df = yf.download(ticker, start=start_date, end=end_date)
     if df.empty or len(df) < 200:
+        st.warning(f"No sufficient data for {ticker}.")
         return None
 
     # ✅ Clean and validate data
@@ -8,6 +14,7 @@ def analyze_stock(ticker):
     df.dropna(subset=["Close"], inplace=True)
     df.dropna(inplace=True)
     if len(df) < 50:
+        st.warning(f"Not enough clean data for {ticker}.")
         return None
 
     # ✅ Initialize indicators safely
@@ -80,7 +87,7 @@ def analyze_stock(ticker):
         signals.append("Volume Spike")
 
     # ✅ Sentiment/Fundamental (via Finviz)
-    finviz = scrape_finviz(ticker.strip())
+    finviz = scrape_finviz(ticker)
     if finviz["Insider Buying"]:
         score += 1
         signals.append("Insider Buying")
@@ -102,7 +109,7 @@ def analyze_stock(ticker):
         signals.append("Sector Outperformance")
 
     return {
-        "Ticker": ticker.strip(),
+        "Ticker": ticker,
         "Score": score,
         "Signals": signals,
         "Close": latest["Close"],
