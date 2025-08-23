@@ -1,10 +1,23 @@
-def analyze_stock(ticker):
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import streamlit as st
+from ta.trend import MACD, ADXIndicator
+from ta.momentum import RSIIndicator
+from ta.volatility import BollingerBands
+
+def analyze_stock(ticker, start_date, end_date):
     ticker = ticker.strip().upper()
     if not ticker:
         st.warning("Empty ticker skipped.")
         return None
 
-    df = yf.download(ticker, start=start_date, end=end_date)
+    try:
+        df = yf.download(ticker, start=start_date, end=end_date)
+    except Exception as e:
+        st.error(f"Failed to download data for {ticker}: {e}")
+        return None
+
     if df.empty or len(df) < 200:
         st.warning(f"No sufficient data for {ticker}.")
         return None
@@ -87,26 +100,35 @@ def analyze_stock(ticker):
         signals.append("Volume Spike")
 
     # ✅ Sentiment/Fundamental (via Finviz)
-    finviz = scrape_finviz(ticker)
-    if finviz["Insider Buying"]:
+    try:
+        finviz = scrape_finviz(ticker)
+    except Exception as e:
+        st.warning(f"Finviz scrape failed for {ticker}: {e}")
+        finviz = {}
+
+    if finviz.get("Insider Buying"):
         score += 1
         signals.append("Insider Buying")
 
-    if finviz["Short Interest Decline"]:
+    if finviz.get("Short Interest Decline"):
         score += 1
         signals.append("Short Interest Decline")
 
-    if finviz["Institutional Ownership"]:
+    if finviz.get("Institutional Ownership"):
         score += 1
         signals.append("High Institutional Ownership")
 
-    if finviz["Earnings Surprise"]:
+    if finviz.get("Earnings Surprise"):
         score += 1
         signals.append("Earnings Surprise")
 
-    if finviz["Sector Outperformance"]:
+    if finviz.get("Sector Outperformance"):
         score += 1
         signals.append("Sector Outperformance")
+
+    # ✅ Optional: Show raw data for debugging
+    if st.checkbox("Show raw data"):
+        st.dataframe(df.tail(30))
 
     return {
         "Ticker": ticker,
