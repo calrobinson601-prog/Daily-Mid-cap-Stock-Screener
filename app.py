@@ -3,35 +3,48 @@ import pandas as pd
 import streamlit as st
 from ta.momentum import RSIIndicator
 from ta.trend import MACD, SMAIndicator
-import requests
 
-# --- Settings ---
-MID_CAP_TICKERS = ['CPRI', 'FND', 'BLDR', 'SMCI', 'ENPH']  # Add more tickers
-NEWS_API_KEY = 'YOUR_API_KEY'  # Replace with your Finnhub or Alpha Vantage key
+# --- Expanded Ticker List ---
+MID_CAP_TICKERS = [
+    # Technology
+    'SMCI', 'ENPH', 'ACLS', 'AMBA',
+    # Industrials
+    'BLDR', 'HUBG', 'TTEK',
+    # Healthcare
+    'TECH', 'NEOG', 'PRVA', 'MODV', 'INSP',
+    # Consumer Cyclical
+    'CPRI', 'FND',
+    # Biotech
+    'SCPH',
+    # Energy
+    'CIVI', 'VTLE', 'SM', 'MTDR', 'AR', 'TALO',
+    'NOG', 'ESTE', 'CRGY', 'REI', 'LBRT'
+]
 
+# --- Sector Mapping ---
 TICKER_SECTORS = {
-    'CPRI': 'Consumer Cyclical',
-    'FND': 'Consumer Cyclical',
-    'BLDR': 'Industrials',
-    'SMCI': 'Technology',
-    'ENPH': 'Technology',
-    # Add more mappings as needed
+    'SMCI': 'Technology', 'ENPH': 'Technology', 'ACLS': 'Technology', 'AMBA': 'Technology',
+    'BLDR': 'Industrials', 'HUBG': 'Industrials', 'TTEK': 'Industrials',
+    'TECH': 'Healthcare', 'NEOG': 'Healthcare', 'PRVA': 'Healthcare', 'MODV': 'Healthcare', 'INSP': 'Healthcare',
+    'CPRI': 'Consumer Cyclical', 'FND': 'Consumer Cyclical',
+    'SCPH': 'Biotech',
+    'CIVI': 'Energy', 'VTLE': 'Energy', 'SM': 'Energy', 'MTDR': 'Energy', 'AR': 'Energy', 'TALO': 'Energy',
+    'NOG': 'Energy', 'ESTE': 'Energy', 'CRGY': 'Energy', 'REI': 'Energy', 'LBRT': 'Energy'
 }
 
 # --- Streamlit UI ---
-st.title("Mid-Cap Breakout Screener (Low Volatility)")
-selected_sectors = st.multiselect("Select sectors to scan:", list(set(TICKER_SECTORS.values())), default=['Technology', 'Industrials'])
+st.title("📊 Mid-Cap Tactical Breakout Screener")
+selected_sectors = st.multiselect(
+    "Select sectors to scan:",
+    sorted(set(TICKER_SECTORS.values())),
+    default=['Technology', 'Industrials', 'Healthcare']
+)
 
 # --- Helper Functions ---
 def fetch_data(ticker):
-    df = yf.download(ticker, period="6mo", interval="1d", group_by='column')
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(1)
-    if 'Close' in df.columns:
-        df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
-        df.dropna(subset=['Close'], inplace=True)
-    else:
-        df['Close'] = pd.Series([None] * len(df), index=df.index)
+    df = yf.download(ticker, period="6mo", interval="1d")
+    df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
+    df.dropna(subset=['Close'], inplace=True)
     return df
 
 def calculate_indicators(df):
@@ -122,14 +135,6 @@ def forecast_breakout(df, ticker):
         return "Forecasted Breakout (2–3 Day Horizon)"
     return None
 
-def get_news_sentiment(ticker):
-    url = f"https://finnhub.io/api/v1/news-sentiment?symbol={ticker}&token={NEWS_API_KEY}"
-    try:
-        response = requests.get(url).json()
-        return response.get('sentiment', {}).get('bullishPercent', 0)
-    except:
-        return 0
-
 # --- Main Loop ---
 top_stocks = []
 
@@ -146,19 +151,13 @@ for ticker in MID_CAP_TICKERS:
     result = evaluate_breakout(df, ticker)
     forecast = forecast_breakout(df, ticker)
 
-    if result:
-        sentiment = get_news_sentiment(ticker)
-        if sentiment > 0.5:
-            top_stocks.append((ticker, result, sector, sentiment))
-    elif forecast:
-        sentiment = get_news_sentiment(ticker)
-        if sentiment > 0.5:
-            top_stocks.append((ticker, forecast, sector, sentiment))
+    if result or forecast:
+        top_stocks.append((ticker, result or forecast, sector))
 
 # --- Display Results ---
 if top_stocks:
-    st.subheader("Breakout & Forecasted Candidates")
-    for stock in sorted(top_stocks, key=lambda x: x[3], reverse=True):
-        st.write(f"📈 {stock[0]} — {stock[1]} — Sector: {stock[2]} — Sentiment Score: {stock[3]:.2f}")
+    st.subheader("📈 Breakout & Forecasted Candidates")
+    for stock in sorted(top_stocks):
+        st.write(f"{stock[0]} — {stock[1]} — Sector: {stock[2]}")
 else:
     st.write("No breakout or forecasted candidates found today.")
