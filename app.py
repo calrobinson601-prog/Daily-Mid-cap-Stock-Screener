@@ -11,9 +11,19 @@ NEWS_API_KEY = 'YOUR_API_KEY'  # Finnhub or Alpha Vantage
 
 # --- Helper Functions ---
 def fetch_data(ticker):
-    df = yf.download(ticker, period="6mo", interval="1d")
-    df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
-    df.dropna(subset=['Close'], inplace=True)
+    df = yf.download(ticker, period="6mo", interval="1d", group_by='column')
+
+    # Flatten multi-index columns if present
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(1)
+
+    # Ensure 'Close' is numeric and valid
+    if 'Close' in df.columns:
+        df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
+        df.dropna(subset=['Close'], inplace=True)
+    else:
+        df['Close'] = pd.Series([None] * len(df), index=df.index)
+
     return df
 
 def calculate_indicators(df):
@@ -66,6 +76,9 @@ top_stocks = []
 
 for ticker in MID_CAP_TICKERS:
     df = fetch_data(ticker)
+    if df.empty or df['Close'].isnull().all():
+        continue  # Skip if data is invalid
+
     df = calculate_indicators(df)
     if check_breakout_criteria(df):
         sentiment = get_news_sentiment(ticker)
