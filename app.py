@@ -37,7 +37,14 @@ st.title("📊 Mid-Cap Tactical Breakout Screener")
 selected_sectors = st.multiselect(
     "Select sectors to scan:",
     sorted(set(TICKER_SECTORS.values())),
-    default=['Technology', 'Industrials', 'Healthcare']
+    default=[
+        'Technology',
+        'Industrials',
+        'Healthcare',
+        'Energy',
+        'Biotech',
+        'Consumer Cyclical'
+    ]
 )
 
 # --- Helper Functions ---
