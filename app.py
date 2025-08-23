@@ -43,8 +43,18 @@ selected_sectors = st.multiselect(
 # --- Helper Functions ---
 def fetch_data(ticker):
     df = yf.download(ticker, period="6mo", interval="1d")
-    df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
-    df.dropna(subset=['Close'], inplace=True)
+    
+    # Handle MultiIndex columns if present
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(1)
+
+    # Ensure 'Close' is a Series
+    if 'Close' in df.columns:
+        df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
+        df.dropna(subset=['Close'], inplace=True)
+    else:
+        df['Close'] = pd.Series([None] * len(df), index=df.index)
+
     return df
 
 def calculate_indicators(df):
