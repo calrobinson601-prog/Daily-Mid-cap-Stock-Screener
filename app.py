@@ -4,16 +4,33 @@ import streamlit as st
 from ta.momentum import RSIIndicator
 from ta.trend import MACD, SMAIndicator
 
-# --- Step 1: Load a Broad Ticker Universe ---
-# You can replace this with a CSV or API later
+# --- Broad Ticker Universe Across All Sectors ---
 ALL_TICKERS = [
-    'AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'META', 'GOOGL', 'NFLX', 'JPM', 'UNH',
-    'REGN', 'FSLR', 'WELL', 'EXR', 'EQR', 'NUE', 'LIN', 'ADM', 'GIS', 'PEP', 'KO',
-    'VICI', 'DTE', 'ETR', 'FE', 'EXC', 'SJM', 'KMB', 'CLX', 'T', 'VZ', 'TMUS',
-    'FANG', 'DVN', 'MRO', 'APA', 'PXD', 'OXY', 'HAL', 'SLB', 'XOM', 'CVX'
+    # Technology
+    'EPAM', 'PAYC', 'CDW',
+    # Healthcare
+    'MRNA', 'ENSG', 'PRVA',
+    # Financials
+    'WBS', 'SSB', 'ORI', 'CMA', 'PRI',
+    # Consumer Staples
+    'CAG', 'SJM', 'KMB',
+    # Consumer Discretionary
+    'MGM', 'PLNT',
+    # Communication Services
+    'KT', 'NYT', 'MTCH',
+    # Industrials
+    'TFII', 'PCTY', 'KNF',
+    # Real Estate
+    'CUBE', 'VICI',
+    # Utilities
+    'DTE', 'ETR', 'EXC',
+    # Materials
+    'NUE', 'LIN', 'FMC',
+    # Energy
+    'AM', 'FANG', 'DVN'
 ]
 
-# --- Step 2: Filter Mid-Cap Stocks and Fetch Sector Info ---
+# --- Filter Mid-Cap Stocks and Fetch Sector Info ---
 @st.cache_data
 def get_mid_cap_tickers(ticker_list):
     mid_caps = {}
