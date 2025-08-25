@@ -4,25 +4,33 @@ import streamlit as st
 from ta.momentum import RSIIndicator
 from ta.trend import MACD, SMAIndicator
 
-# --- Static Mid-Cap Ticker List ---
-MID_CAP_TICKERS = [
-    'SMCI', 'ENPH', 'ACLS', 'AMBA', 'BLDR', 'HUBG', 'TTEK',
-    'TECH', 'NEOG', 'PRVA', 'MODV', 'INSP', 'CPRI', 'FND',
-    'SCPH', 'CIVI', 'VTLE', 'SM', 'MTDR', 'AR', 'TALO',
-    'NOG', 'ESTE', 'CRGY', 'REI', 'LBRT'
+# --- Step 1: Load a Broad Ticker Universe ---
+# You can replace this with a CSV or API later
+ALL_TICKERS = [
+    'AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'META', 'GOOGL', 'NFLX', 'JPM', 'UNH',
+    'REGN', 'FSLR', 'WELL', 'EXR', 'EQR', 'NUE', 'LIN', 'ADM', 'GIS', 'PEP', 'KO',
+    'VICI', 'DTE', 'ETR', 'FE', 'EXC', 'SJM', 'KMB', 'CLX', 'T', 'VZ', 'TMUS',
+    'FANG', 'DVN', 'MRO', 'APA', 'PXD', 'OXY', 'HAL', 'SLB', 'XOM', 'CVX'
 ]
 
-# --- Helper: Get Sector Info Dynamically ---
+# --- Step 2: Filter Mid-Cap Stocks and Fetch Sector Info ---
 @st.cache_data
-def get_sector(ticker):
-    try:
-        info = yf.Ticker(ticker).info
-        return info.get('sector', 'Unknown')
-    except:
-        return 'Unknown'
+def get_mid_cap_tickers(ticker_list):
+    mid_caps = {}
+    for ticker in ticker_list:
+        try:
+            info = yf.Ticker(ticker).info
+            cap = info.get('marketCap', 0)
+            sector = info.get('sector', 'Unknown')
+            if 2e9 <= cap <= 15e9:
+                mid_caps[ticker] = sector
+        except:
+            continue
+    return mid_caps
 
-# --- Build Sector Map Dynamically ---
-TICKER_SECTORS = {t: get_sector(t) for t in MID_CAP_TICKERS}
+MID_CAP_UNIVERSE = get_mid_cap_tickers(ALL_TICKERS)
+MID_CAP_TICKERS = list(MID_CAP_UNIVERSE.keys())
+TICKER_SECTORS = MID_CAP_UNIVERSE
 
 # --- Streamlit UI ---
 st.title("📊 Mid-Cap Tactical Breakout Screener")
@@ -33,6 +41,9 @@ selected_sectors = st.multiselect(
     available_sectors,
     default=available_sectors
 )
+
+st.write("✅ Sectors represented in current scan:")
+st.write(available_sectors)
 
 # --- Data Fetching ---
 def fetch_data(ticker):
