@@ -4,66 +4,49 @@ import streamlit as st
 from ta.momentum import RSIIndicator
 from ta.trend import MACD, SMAIndicator
 
-# --- Expanded Ticker List ---
+# --- Static Mid-Cap Ticker List ---
 MID_CAP_TICKERS = [
-    # Technology
-    'SMCI', 'ENPH', 'ACLS', 'AMBA',
-    # Industrials
-    'BLDR', 'HUBG', 'TTEK',
-    # Healthcare
-    'TECH', 'NEOG', 'PRVA', 'MODV', 'INSP',
-    # Consumer Cyclical
-    'CPRI', 'FND',
-    # Biotech
-    'SCPH',
-    # Energy
-    'CIVI', 'VTLE', 'SM', 'MTDR', 'AR', 'TALO',
+    'SMCI', 'ENPH', 'ACLS', 'AMBA', 'BLDR', 'HUBG', 'TTEK',
+    'TECH', 'NEOG', 'PRVA', 'MODV', 'INSP', 'CPRI', 'FND',
+    'SCPH', 'CIVI', 'VTLE', 'SM', 'MTDR', 'AR', 'TALO',
     'NOG', 'ESTE', 'CRGY', 'REI', 'LBRT'
 ]
 
-# --- Sector Mapping ---
-TICKER_SECTORS = {
-    'SMCI': 'Technology', 'ENPH': 'Technology', 'ACLS': 'Technology', 'AMBA': 'Technology',
-    'BLDR': 'Industrials', 'HUBG': 'Industrials', 'TTEK': 'Industrials',
-    'TECH': 'Healthcare', 'NEOG': 'Healthcare', 'PRVA': 'Healthcare', 'MODV': 'Healthcare', 'INSP': 'Healthcare',
-    'CPRI': 'Consumer Cyclical', 'FND': 'Consumer Cyclical',
-    'SCPH': 'Biotech',
-    'CIVI': 'Energy', 'VTLE': 'Energy', 'SM': 'Energy', 'MTDR': 'Energy', 'AR': 'Energy', 'TALO': 'Energy',
-    'NOG': 'Energy', 'ESTE': 'Energy', 'CRGY': 'Energy', 'REI': 'Energy', 'LBRT': 'Energy'
-}
+# --- Helper: Get Sector Info Dynamically ---
+@st.cache_data
+def get_sector(ticker):
+    try:
+        info = yf.Ticker(ticker).info
+        return info.get('sector', 'Unknown')
+    except:
+        return 'Unknown'
+
+# --- Build Sector Map Dynamically ---
+TICKER_SECTORS = {t: get_sector(t) for t in MID_CAP_TICKERS}
 
 # --- Streamlit UI ---
 st.title("📊 Mid-Cap Tactical Breakout Screener")
+
+available_sectors = sorted(set(TICKER_SECTORS.values()))
 selected_sectors = st.multiselect(
     "Select sectors to scan:",
-    sorted(set(TICKER_SECTORS.values())),
-    default=[
-        'Technology',
-        'Industrials',
-        'Healthcare',
-        'Energy',
-        'Biotech',
-        'Consumer Cyclical'
-    ]
+    available_sectors,
+    default=available_sectors
 )
 
-# --- Helper Functions ---
+# --- Data Fetching ---
 def fetch_data(ticker):
     df = yf.download(ticker, period="6mo", interval="1d")
-    
-    # Handle MultiIndex columns if present
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(1)
-
-    # Ensure 'Close' is a Series
     if 'Close' in df.columns:
         df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
         df.dropna(subset=['Close'], inplace=True)
     else:
         df['Close'] = pd.Series([None] * len(df), index=df.index)
-
     return df
 
+# --- Indicator Calculation ---
 def calculate_indicators(df):
     df['20MA'] = SMAIndicator(close=df['Close'], window=20).sma_indicator()
     df['50MA'] = SMAIndicator(close=df['Close'], window=50).sma_indicator()
@@ -73,6 +56,7 @@ def calculate_indicators(df):
     df['VolumeAvg'] = df['Volume'].rolling(window=20).mean()
     return df
 
+# --- Market Cap Fetch ---
 def get_market_cap(ticker):
     try:
         info = yf.Ticker(ticker).info
@@ -80,6 +64,7 @@ def get_market_cap(ticker):
     except:
         return 0
 
+# --- ATR Calculation ---
 def calculate_atr(df):
     high_low = df['High'] - df['Low']
     high_close = abs(df['High'] - df['Close'].shift())
@@ -89,6 +74,7 @@ def calculate_atr(df):
     atr = true_range.rolling(14).mean()
     return atr / df['Close']
 
+# --- Breakout Evaluation ---
 def evaluate_breakout(df, ticker):
     latest = df.iloc[-1]
     breakout_score = 0
@@ -130,6 +116,7 @@ def evaluate_breakout(df, ticker):
     else:
         return None
 
+# --- Forecasting Logic ---
 def forecast_breakout(df, ticker):
     if len(df) < 3:
         return None
